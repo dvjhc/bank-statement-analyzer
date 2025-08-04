@@ -1,3 +1,9 @@
+console.log("--- SERVER FILE IS RUNNING ---"); // Add this line
+
+const express = require('express');
+const cors = require('cors');
+// ... rest of the file
+
 // api/server.js
 
 const express = require('express');
