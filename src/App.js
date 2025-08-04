@@ -1,67 +1,31 @@
-import React, { useState } from 'react';
-import { Upload, BarChart2, ArrowUpCircle, ArrowDownCircle, FileText, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Upload, BarChart2, ArrowUpCircle, ArrowDownCircle, FileText, AlertCircle, Loader2, TrendingUp, TrendingDown, Scale, Calendar } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- UI Components ---
 
-const StatCard = ({ title, value, icon, colorClass }) => (
-  <div className="bg-white p-6 rounded-xl shadow-md flex items-center space-x-4">
-    <div className={`p-3 rounded-full ${colorClass}`}>
-      {icon}
-    </div>
-    <div>
-      <p className="text-sm text-gray-500">{title}</p>
-      <p className="text-2xl font-bold text-gray-800">${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-    </div>
-  </div>
-);
-
-const CategoryList = ({ title, categories, icon, colorClass }) => (
+const StatCard = ({ title, value, icon, colorClass, change }) => (
   <div className="bg-white p-6 rounded-xl shadow-md">
-    <div className="flex items-center mb-4">
-      <div className={`p-2 rounded-full ${colorClass} mr-3`}>
-        {icon}
-      </div>
-      <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+    <div className="flex justify-between items-start">
+        <div>
+            <p className="text-sm text-gray-500">{title}</p>
+            <p className="text-2xl font-bold text-gray-800">${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+        </div>
+        <div className={`p-3 rounded-full ${colorClass}`}>
+            {icon}
+        </div>
     </div>
-    <ul className="space-y-3">
-      {categories.map((cat, index) => (
-        <li key={index} className="flex justify-between items-center text-gray-600">
-          <span>{cat.name}</span>
-          <span className="font-medium text-gray-700">${cat.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        </li>
-      ))}
-    </ul>
+    {change !== undefined && (
+        <p className={`text-xs mt-2 flex items-center ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {change >= 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
+            {change.toFixed(2)}% from last month
+        </p>
+    )}
   </div>
 );
-
-const BarChart = ({ data, dataKey, color }) => {
-    const maxValue = Math.max(...data.map(d => d[dataKey]));
-
-    return (
-        <div className="bg-white p-6 rounded-xl shadow-md">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Expense Breakdown</h3>
-            <div className="flex justify-around items-end h-64 space-x-2">
-                {data.map((item, index) => (
-                    <div key={index} className="flex-1 flex flex-col items-center">
-                        <div
-                            className="w-full rounded-t-md"
-                            style={{
-                                height: `${(item[dataKey] / maxValue) * 100}%`,
-                                backgroundColor: color,
-                                transition: 'height 0.5s ease-in-out'
-                            }}
-                            title={`${item.name}: $${item.amount.toFixed(2)}`}
-                        ></div>
-                        <p className="text-xs text-gray-500 mt-2 text-center transform -rotate-45 whitespace-nowrap">{item.name}</p>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
 
 const UploadArea = ({ onUpload, isLoading, error }) => (
-  <div className="w-full max-w-lg mx-auto text-center">
+  <div className="w-full max-w-lg mx-auto text-center bg-white p-8 rounded-xl shadow-md">
     <div
       className={`border-2 border-dashed border-gray-300 rounded-xl p-12 transition-all duration-300 ${isLoading ? 'cursor-wait' : 'cursor-pointer hover:border-blue-500 hover:bg-blue-50'}`}
       onClick={() => !isLoading && document.getElementById('file-upload').click()}
@@ -70,14 +34,14 @@ const UploadArea = ({ onUpload, isLoading, error }) => (
         {isLoading ? (
             <>
                 <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-                <h2 className="text-xl font-semibold text-gray-700">Analyzing...</h2>
-                <p className="text-gray-500 mt-2">Please wait while we process your statement.</p>
+                <h2 className="text-xl font-semibold text-gray-700">AI is Analyzing...</h2>
+                <p className="text-gray-500 mt-2">This may take a moment.</p>
             </>
         ) : (
             <>
                 <Upload className="w-12 h-12 text-gray-400 mb-4" />
-                <h2 className="text-xl font-semibold text-gray-700">Click to upload your bank statement</h2>
-                <p className="text-gray-500 mt-2">PDF format only.</p>
+                <h2 className="text-xl font-semibold text-gray-700">Upload a new statement</h2>
+                <p className="text-gray-500 mt-2">Drag & drop or click to select a PDF.</p>
                 <input type="file" id="file-upload" className="hidden" accept=".pdf" onChange={onUpload} disabled={isLoading} />
             </>
         )}
@@ -94,20 +58,70 @@ const UploadArea = ({ onUpload, isLoading, error }) => (
   </div>
 );
 
+const HistoryTable = ({ data }) => (
+    <div className="bg-white p-6 rounded-xl shadow-md">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Analysis History</h3>
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File Name</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Income</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expenses</th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Net Flow</th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {data.map((item) => (
+                        <tr key={item.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.analysis_data.summary.endDate).toLocaleDateString()}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.file_name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">${item.analysis_data.income.total.toLocaleString()}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">${item.analysis_data.expenses.total.toLocaleString()}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">${item.analysis_data.summary.netFlow.toLocaleString()}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
+
+
 // --- Main App Component ---
 
 export default function App() {
-  const [analysis, setAnalysis] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [historicalData, setHistoricalData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // Start true for initial history fetch
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
+
+  const fetchHistory = async () => {
+    setError(null);
+    setIsLoading(true);
+    try {
+        const response = await fetch('/api/history');
+        if (!response.ok) throw new Error('Failed to fetch history');
+        const data = await response.json();
+        setHistoricalData(data);
+    } catch (err) {
+        setError(err.message);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
   const handleFileChange = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    setIsLoading(true);
+    setIsAnalyzing(true);
     setError(null);
-    setAnalysis(null); // Reset previous analysis
 
     const formData = new FormData();
     formData.append('statement', file);
@@ -117,112 +131,89 @@ export default function App() {
         method: 'POST',
         body: formData,
       });
-
-      // Try to parse the JSON body regardless of the response status
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Analysis failed');
       
-      if (!response.ok) {
-        // If the server sent a specific error message in the JSON, use it.
-        // Otherwise, fall back to the generic status text.
-        throw new Error(data.error || `Server responded with ${response.status}`);
-      }
-      
-      // Additional check to ensure data has the expected structure
-      if (!data.income || !data.expenses || !data.summary) {
-        throw new Error('Received malformed analysis data from server.');
-      }
-
-      setAnalysis(data);
+      // Refresh history to include the new analysis
+      await fetchHistory(); 
 
     } catch (err) {
-      console.error("Error uploading or analyzing file:", err);
-      // Display the specific error message from the backend if it exists
-      setError(err.message || 'Could not connect to the server or process the file.');
+      setError(err.message);
     } finally {
-      setIsLoading(false);
+      setIsAnalyzing(false);
     }
   };
 
-  const reset = () => {
-    setAnalysis(null);
-    setError(null);
+  const chartData = useMemo(() => {
+    return historicalData
+        .map(item => ({
+            month: new Date(item.analysis_data.summary.endDate).toLocaleString('default', { month: 'short', year: '2-digit' }),
+            Income: item.analysis_data.income.total,
+            Expenses: item.analysis_data.expenses.total,
+            'Net Flow': item.analysis_data.summary.netFlow,
+        }))
+        .reverse(); // Reverse to show oldest to newest
+  }, [historicalData]);
+
+  const latestAnalysis = historicalData[0]?.analysis_data;
+  const previousAnalysis = historicalData[1]?.analysis_data;
+
+  const calculateChange = (current, previous) => {
+      if(!current || !previous || previous === 0) return 0;
+      return ((current - previous) / previous) * 100;
   }
 
-  // A more robust check to ensure the analysis object and its properties exist before rendering the results.
-  const isAnalysisReady = analysis && analysis.income && analysis.expenses && analysis.summary;
-
-  if (!isAnalysisReady) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
-        <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-800">Bank Statement Analyzer</h1>
-            <p className="text-lg text-gray-600 mt-2">Get a clear summary of your finances.</p>
+        <div className="min-h-screen bg-gray-50 flex justify-center items-center">
+            <Loader2 className="w-16 h-16 text-blue-500 animate-spin" />
         </div>
-        <UploadArea onUpload={handleFileChange} isLoading={isLoading} error={error} />
-      </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-          <h1 className="text-3xl font-bold text-gray-800">Financial Summary</h1>
-          <button
-            onClick={reset}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors"
-          >
-            <FileText className="w-5 h-5 mr-2" />
-            Analyze Another Statement
-          </button>
-        </div>
+        <header className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-800">Financial Dashboard</h1>
+          <p className="text-lg text-gray-600 mt-2">Your financial overview across all statements.</p>
+        </header>
 
-        {/* Key Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatCard
-            title="Total Income"
-            value={analysis.income.total}
-            icon={<ArrowUpCircle className="w-6 h-6 text-green-800" />}
-            colorClass="bg-green-200"
-          />
-          <StatCard
-            title="Total Expenses"
-            value={analysis.expenses.total}
-            icon={<ArrowDownCircle className="w-6 h-6 text-red-800" />}
-            colorClass="bg-red-200"
-          />
-          <StatCard
-            title="Net Flow"
-            value={analysis.summary.netFlow}
-            icon={<BarChart2 className="w-6 h-6 text-blue-800" />}
-            colorClass="bg-blue-200"
-          />
-        </div>
+        {latestAnalysis && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <StatCard title="Latest Income" value={latestAnalysis.income.total} icon={<ArrowUpCircle/>} colorClass="bg-green-100 text-green-700" change={calculateChange(latestAnalysis.income.total, previousAnalysis?.income.total)}/>
+                <StatCard title="Latest Expenses" value={latestAnalysis.expenses.total} icon={<ArrowDownCircle/>} colorClass="bg-red-100 text-red-700" change={calculateChange(latestAnalysis.expenses.total, previousAnalysis?.expenses.total)}/>
+                <StatCard title="Latest Net Flow" value={latestAnalysis.summary.netFlow} icon={<Scale/>} colorClass="bg-blue-100 text-blue-700" change={calculateChange(latestAnalysis.summary.netFlow, previousAnalysis?.summary.netFlow)}/>
+                <StatCard title="Statement Period" value={new Date(latestAnalysis.summary.endDate).toLocaleDateString()} icon={<Calendar/>} colorClass="bg-purple-100 text-purple-700" />
+            </div>
+        )}
 
-        {/* Main Content Area */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Income & Expenses Lists */}
-          <div className="lg:col-span-1 space-y-6">
-            <CategoryList
-              title="Income Sources"
-              categories={analysis.income.categories}
-              icon={<ArrowUpCircle className="w-5 h-5 text-green-800" />}
-              colorClass="bg-green-200"
-            />
-            <CategoryList
-              title="Expense Categories"
-              categories={analysis.expenses.categories}
-              icon={<ArrowDownCircle className="w-5 h-5 text-red-800" />}
-              colorClass="bg-red-200"
-            />
-          </div>
-
-          {/* Chart */}
-          <div className="lg:col-span-2">
-            <BarChart data={analysis.expenses.categories} dataKey="amount" color="#ef4444" />
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Monthly Trends</h3>
+                <ResponsiveContainer width="100%" height={400}>
+                    <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip formatter={(value) => `$${value.toLocaleString()}`} />
+                        <Legend />
+                        <Line type="monotone" dataKey="Income" stroke="#10b981" strokeWidth={2} />
+                        <Line type="monotone" dataKey="Expenses" stroke="#ef4444" strokeWidth={2} />
+                        <Line type="monotone" dataKey="Net Flow" stroke="#3b82f6" strokeWidth={2} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+            <div className="lg:col-span-1">
+                <UploadArea onUpload={handleFileChange} isLoading={isAnalyzing} error={error} />
+            </div>
         </div>
+        
+        {historicalData.length > 0 && (
+            <div className="mt-8">
+                <HistoryTable data={historicalData} />
+            </div>
+        )}
       </div>
     </div>
   );
