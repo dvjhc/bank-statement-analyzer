@@ -9,13 +9,17 @@ const StatCard = ({ title, value, icon, colorClass, change }) => (
     <div className="flex justify-between items-start">
         <div>
             <p className="text-sm text-gray-500">{title}</p>
-            <p className="text-2xl font-bold text-gray-800">{typeof value === 'number' ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : value}</p>
+            <p className="text-2xl font-bold text-gray-800">
+                {/* Check if value is a number before formatting as currency */}
+                {typeof value === 'number' ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : (value || 'N/A')}
+            </p>
         </div>
         <div className={`p-3 rounded-full ${colorClass}`}>
             {icon}
         </div>
     </div>
-    {change !== undefined && (
+    {/* Only show change if it's a valid number */}
+    {change !== undefined && typeof change === 'number' && (
         <p className={`text-xs mt-2 flex items-center ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {change >= 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
             {change.toFixed(2)}% from last month
@@ -73,15 +77,23 @@ const HistoryTable = ({ data }) => (
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                    {data.map((item) => (
-                        <tr key={item.id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.analysis_data.summary.endDate).toLocaleDateString()}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.file_name}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">${item.analysis_data.income.total.toLocaleString()}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">${item.analysis_data.expenses.total.toLocaleString()}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">${item.analysis_data.summary.netFlow.toLocaleString()}</td>
-                        </tr>
-                    ))}
+                    {data.map((item) => {
+                        // Defensive checks for each item in the history
+                        const analysis = item.analysis_data || {};
+                        const summary = analysis.summary || {};
+                        const income = analysis.income || {};
+                        const expenses = analysis.expenses || {};
+
+                        return (
+                            <tr key={item.id}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{summary.endDate ? new Date(summary.endDate).toLocaleDateString() : 'N/A'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.file_name || 'N/A'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">${(income.total || 0).toLocaleString()}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">${(expenses.total || 0).toLocaleString()}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">${(summary.netFlow || 0).toLocaleString()}</td>
+                            </tr>
+                        )
+                    })}
                 </tbody>
             </table>
         </div>
@@ -104,7 +116,9 @@ export default function App() {
         const response = await fetch('/api/history');
         if (!response.ok) throw new Error('Failed to fetch history');
         const data = await response.json();
-        setHistoricalData(data);
+        // Filter out any potentially malformed entries from the database
+        const validData = data.filter(item => item.analysis_data && item.analysis_data.summary);
+        setHistoricalData(validData);
     } catch (err) {
         setError(err.message);
     } finally {
@@ -146,12 +160,23 @@ export default function App() {
 
   const chartData = useMemo(() => {
     return historicalData
-        .map(item => ({
-            month: new Date(item.analysis_data.summary.endDate).toLocaleString('default', { month: 'short', year: '2-digit' }),
-            Income: item.analysis_data.income.total,
-            Expenses: item.analysis_data.expenses.total,
-            'Net Flow': item.analysis_data.summary.netFlow,
-        }))
+        .map(item => {
+            // More defensive mapping for chart data
+            const analysis = item.analysis_data || {};
+            const summary = analysis.summary || {};
+            const income = analysis.income || {};
+            const expenses = analysis.expenses || {};
+            
+            if (!summary.endDate) return null; // Skip entries without a date
+
+            return {
+                month: new Date(summary.endDate).toLocaleString('default', { month: 'short', year: '2-digit' }),
+                Income: income.total || 0,
+                Expenses: expenses.total || 0,
+                'Net Flow': summary.netFlow || 0,
+            }
+        })
+        .filter(Boolean) // Remove any null entries
         .reverse(); // Reverse to show oldest to newest
   }, [historicalData]);
 
@@ -159,11 +184,12 @@ export default function App() {
   const previousAnalysis = historicalData[1]?.analysis_data;
 
   const calculateChange = (current, previous) => {
-      if(!current || !previous || previous === 0) return 0;
+      // Ensure both values are numbers before calculating
+      if(typeof current !== 'number' || typeof previous !== 'number' || previous === 0) return undefined;
       return ((current - previous) / previous) * 100;
   }
 
-  if (isLoading) {
+  if (isLoading && historicalData.length === 0) {
     return (
         <div className="min-h-screen bg-gray-50 flex justify-center items-center">
             <Loader2 className="w-16 h-16 text-blue-500 animate-spin" />
@@ -181,10 +207,10 @@ export default function App() {
 
         {latestAnalysis && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <StatCard title="Latest Income" value={latestAnalysis.income.total} icon={<ArrowUpCircle/>} colorClass="bg-green-100 text-green-700" change={calculateChange(latestAnalysis.income.total, previousAnalysis?.income.total)}/>
-                <StatCard title="Latest Expenses" value={latestAnalysis.expenses.total} icon={<ArrowDownCircle/>} colorClass="bg-red-100 text-red-700" change={calculateChange(latestAnalysis.expenses.total, previousAnalysis?.expenses.total)}/>
-                <StatCard title="Latest Net Flow" value={latestAnalysis.summary.netFlow} icon={<Scale/>} colorClass="bg-blue-100 text-blue-700" change={calculateChange(latestAnalysis.summary.netFlow, previousAnalysis?.summary.netFlow)}/>
-                <StatCard title="Statement Period" value={new Date(latestAnalysis.summary.endDate).toLocaleDateString()} icon={<Calendar/>} colorClass="bg-purple-100 text-purple-700" />
+                <StatCard title="Latest Income" value={latestAnalysis.income?.total || 0} icon={<ArrowUpCircle/>} colorClass="bg-green-100 text-green-700" change={calculateChange(latestAnalysis.income?.total, previousAnalysis?.income?.total)}/>
+                <StatCard title="Latest Expenses" value={latestAnalysis.expenses?.total || 0} icon={<ArrowDownCircle/>} colorClass="bg-red-100 text-red-700" change={calculateChange(latestAnalysis.expenses?.total, previousAnalysis?.expenses?.total)}/>
+                <StatCard title="Latest Net Flow" value={latestAnalysis.summary?.netFlow || 0} icon={<Scale/>} colorClass="bg-blue-100 text-blue-700" change={calculateChange(latestAnalysis.summary?.netFlow, previousAnalysis?.summary?.netFlow)}/>
+                <StatCard title="Statement Period" value={latestAnalysis.summary?.endDate ? new Date(latestAnalysis.summary.endDate).toLocaleDateString() : 'N/A'} icon={<Calendar/>} colorClass="bg-purple-100 text-purple-700" />
             </div>
         )}
 
