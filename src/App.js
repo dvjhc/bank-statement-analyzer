@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, ArrowUpCircle, ArrowDownCircle, AlertCircle, Loader2, TrendingUp, TrendingDown, Scale, Calendar, Trash2, CheckCircle, Banknote } from 'lucide-react';
+import { Upload, ArrowUpCircle, ArrowDownCircle, AlertCircle, Loader2, TrendingUp, TrendingDown, Scale, Trash2, CheckCircle, Banknote } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- UI Components ---
