@@ -113,27 +113,35 @@ export default function App() {
 
     setIsLoading(true);
     setError(null);
+    setAnalysis(null); // Reset previous analysis
 
     const formData = new FormData();
     formData.append('statement', file);
 
     try {
-      // This fetch request goes to the local backend server
+      // This fetch request goes to the local backend server or Vercel function
       const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
+        // Throw an error with the status to be caught by the catch block
         throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
+      
+      // Additional check to ensure data has the expected structure
+      if (!data.income || !data.expenses || !data.summary) {
+        throw new Error('Received malformed analysis data from server.');
+      }
+
       setAnalysis(data);
 
     } catch (err) {
       console.error("Error uploading or analyzing file:", err);
-      setError('Could not connect to the local server or process the file. Please ensure the server is running. See setup instructions for details.');
+      setError('Could not connect to the server or process the file. Please ensure the server is running or check the deployment logs.');
     } finally {
       setIsLoading(false);
     }
@@ -144,7 +152,10 @@ export default function App() {
     setError(null);
   }
 
-  if (!analysis) {
+  // A more robust check to ensure the analysis object and its properties exist before rendering the results.
+  const isAnalysisReady = analysis && analysis.income && analysis.expenses && analysis.summary;
+
+  if (!isAnalysisReady) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
         <div className="text-center mb-8">
