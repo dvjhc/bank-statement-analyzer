@@ -172,6 +172,8 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
         
         // --- Clean and Parse AI Response ---
         let responseText = response.text();
+        console.log('Raw AI Response:', responseText); // Log the raw response for debugging
+        
         // Remove markdown backticks and the 'json' language identifier
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '');
         const analysisResult = JSON.parse(responseText.trim());
@@ -181,6 +183,8 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
         // --- Validate AI Response Structure ---
         console.log('Validating AI response structure...');
         if (!analysisResult || !analysisResult.income || !analysisResult.expenses || !analysisResult.summary) {
+            // Log the invalid object to see what the AI returned
+            console.error('Invalid AI response structure:', JSON.stringify(analysisResult, null, 2));
             throw new Error('AI response is missing one or more key fields (income, expenses, summary).');
         }
         console.log('AI response structure is valid.');
