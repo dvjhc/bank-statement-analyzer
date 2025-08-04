@@ -144,8 +144,14 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
         console.log('Sending data to AI for analysis...');
         const result = await model.generateContent(prompt, generationConfig);
         const response = result.response;
-        const analysisResult = JSON.parse(response.text());
-        console.log('Successfully received analysis from AI.');
+        
+        // --- Clean and Parse AI Response ---
+        let responseText = response.text();
+        // Remove markdown backticks and the 'json' language identifier
+        responseText = responseText.replace(/```json/g, '').replace(/```/g, '');
+        const analysisResult = JSON.parse(responseText.trim());
+
+        console.log('Successfully received and parsed analysis from AI.');
 
         // --- Save to Supabase Database ---
         console.log('Saving analysis to Supabase...');
