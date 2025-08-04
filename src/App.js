@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, ArrowUpCircle, ArrowDownCircle, AlertCircle, Loader2, TrendingUp, TrendingDown, Scale, Calendar } from 'lucide-react';
+import { Upload, ArrowUpCircle, ArrowDownCircle, AlertCircle, Loader2, TrendingUp, TrendingDown, Scale, Calendar, Trash2, CheckCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- UI Components ---
@@ -10,7 +10,6 @@ const StatCard = ({ title, value, icon, colorClass, change }) => (
         <div>
             <p className="text-sm text-gray-500">{title}</p>
             <p className="text-2xl font-bold text-gray-800">
-                {/* Check if value is a number before formatting as currency */}
                 {typeof value === 'number' ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : (value || 'N/A')}
             </p>
         </div>
@@ -18,7 +17,6 @@ const StatCard = ({ title, value, icon, colorClass, change }) => (
             {icon}
         </div>
     </div>
-    {/* Only show change if it's a valid number */}
     {change !== undefined && typeof change === 'number' && (
         <p className={`text-xs mt-2 flex items-center ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {change >= 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
@@ -28,7 +26,7 @@ const StatCard = ({ title, value, icon, colorClass, change }) => (
   </div>
 );
 
-const UploadArea = ({ onUpload, isLoading, error }) => (
+const UploadArea = ({ onUpload, isLoading, error, success }) => (
   <div className="w-full max-w-lg mx-auto text-center bg-white p-8 rounded-xl shadow-md">
     <div
       className={`border-2 border-dashed border-gray-300 rounded-xl p-12 transition-all duration-300 ${isLoading ? 'cursor-wait' : 'cursor-pointer hover:border-blue-500 hover:bg-blue-50'}`}
@@ -59,10 +57,16 @@ const UploadArea = ({ onUpload, isLoading, error }) => (
             </p>
         </div>
     )}
+    {success && (
+        <div className="mt-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md flex">
+            <CheckCircle className="w-6 h-6 mr-3 flex-shrink-0"/>
+            <p className="text-sm text-left">{success}</p>
+        </div>
+    )}
   </div>
 );
 
-const HistoryTable = ({ data }) => (
+const HistoryTable = ({ data, onDelete, deletingId }) => (
     <div className="bg-white p-6 rounded-xl shadow-md">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Analysis History</h3>
         <div className="overflow-x-auto">
@@ -74,11 +78,11 @@ const HistoryTable = ({ data }) => (
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Income</th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expenses</th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Net Flow</th>
+                        <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                     {data.map((item) => {
-                        // Defensive checks for each item in the history
                         const analysis = item.analysis_data || {};
                         const summary = analysis.summary || {};
                         const income = analysis.income || {};
@@ -91,6 +95,11 @@ const HistoryTable = ({ data }) => (
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">${(income.total || 0).toLocaleString()}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">${(expenses.total || 0).toLocaleString()}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">${(summary.netFlow || 0).toLocaleString()}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <button onClick={() => onDelete(item.id)} disabled={deletingId === item.id} className="text-red-600 hover:text-red-900 disabled:opacity-50">
+                                        {deletingId === item.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Trash2 className="w-4 h-4"/>}
+                                    </button>
+                                </td>
                             </tr>
                         )
                     })}
@@ -105,9 +114,11 @@ const HistoryTable = ({ data }) => (
 
 export default function App() {
   const [historicalData, setHistoricalData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true); // Start true for initial history fetch
+  const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState('');
 
   const fetchHistory = async () => {
     setError(null);
@@ -116,7 +127,6 @@ export default function App() {
         const response = await fetch('/api/history');
         if (!response.ok) throw new Error('Failed to fetch history');
         const data = await response.json();
-        // Filter out any potentially malformed entries from the database
         const validData = data.filter(item => item.analysis_data && item.analysis_data.summary);
         setHistoricalData(validData);
     } catch (err) {
@@ -136,6 +146,7 @@ export default function App() {
 
     setIsAnalyzing(true);
     setError(null);
+    setSuccess('');
 
     const formData = new FormData();
     formData.append('statement', file);
@@ -148,7 +159,8 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Analysis failed');
       
-      // Refresh history to include the new analysis
+      setSuccess('Analysis successful!');
+      setTimeout(() => setSuccess(''), 5000); // Clear message after 5 seconds
       await fetchHistory(); 
 
     } catch (err) {
@@ -158,16 +170,35 @@ export default function App() {
     }
   };
 
+  const handleDelete = async (id) => {
+    setDeletingId(id);
+    setError(null);
+    setSuccess('');
+
+    try {
+        const response = await fetch(`/api/history/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Failed to delete analysis.');
+        
+        setSuccess('Analysis deleted successfully!');
+        setTimeout(() => setSuccess(''), 5000);
+        await fetchHistory();
+
+    } catch (err) {
+        setError(err.message);
+    } finally {
+        setDeletingId(null);
+    }
+  };
+
   const chartData = useMemo(() => {
     return historicalData
         .map(item => {
-            // More defensive mapping for chart data
             const analysis = item.analysis_data || {};
             const summary = analysis.summary || {};
             const income = analysis.income || {};
             const expenses = analysis.expenses || {};
             
-            if (!summary.endDate) return null; // Skip entries without a date
+            if (!summary.endDate) return null;
 
             return {
                 month: new Date(summary.endDate).toLocaleString('default', { month: 'short', year: '2-digit' }),
@@ -176,15 +207,14 @@ export default function App() {
                 'Net Flow': summary.netFlow || 0,
             }
         })
-        .filter(Boolean) // Remove any null entries
-        .reverse(); // Reverse to show oldest to newest
+        .filter(Boolean)
+        .reverse();
   }, [historicalData]);
 
   const latestAnalysis = historicalData[0]?.analysis_data;
   const previousAnalysis = historicalData[1]?.analysis_data;
 
   const calculateChange = (current, previous) => {
-      // Ensure both values are numbers before calculating
       if(typeof current !== 'number' || typeof previous !== 'number' || previous === 0) return undefined;
       return ((current - previous) / previous) * 100;
   }
@@ -231,13 +261,13 @@ export default function App() {
                 </ResponsiveContainer>
             </div>
             <div className="lg:col-span-1">
-                <UploadArea onUpload={handleFileChange} isLoading={isAnalyzing} error={error} />
+                <UploadArea onUpload={handleFileChange} isLoading={isAnalyzing} error={error} success={success} />
             </div>
         </div>
         
         {historicalData.length > 0 && (
             <div className="mt-8">
-                <HistoryTable data={historicalData} />
+                <HistoryTable data={historicalData} onDelete={handleDelete} deletingId={deletingId} />
             </div>
         )}
       </div>

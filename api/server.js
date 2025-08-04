@@ -46,6 +46,30 @@ app.get('/api/history', async (req, res) => {
     }
 });
 
+// --- API Endpoint to delete an analysis ---
+app.delete('/api/history/:id', async (req, res) => {
+    const { id } = req.params;
+    console.log(`--- DELETE REQUEST RECEIVED FOR ID: ${id} ---`);
+    try {
+        const supabase = getSupabaseClient();
+        const { error } = await supabase
+            .from('analyses')
+            .delete()
+            .match({ id: id });
+        
+        if (error) {
+            throw new Error(`Database error: ${error.message}`);
+        }
+
+        res.status(200).json({ message: 'Analysis deleted successfully.' });
+
+    } catch (error) {
+        console.error(`--- ERROR DELETING ID: ${id} ---`);
+        console.error(error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 // --- API Endpoint for AI Analysis ---
 app.post('/api/analyze', upload.single('statement'), async (req, res) => {
@@ -78,12 +102,13 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
             Your task is to identify all financial transactions, categorize them, and provide a summary in a specific JSON format.
 
             Follow these rules:
-            1.  Identify the statement period (start and end dates).
-            2.  Sum up all incoming transactions into the specified income categories.
-            3.  Sum up all outgoing transactions into the specified expenditure categories.
-            4.  If a category has no transactions, its amount must be 0.
-            5.  Calculate the total for income, the total for expenses, and the net flow (total income - total expenses).
-            6.  Do not invent data. If you cannot determine a value from the text, use a reasonable default like "N/A" for strings or 0 for numbers.
+            1.  Identify the statement period. Find the start and end dates and format them as "YYYY-MM-DD".
+            2.  Sum up all incoming transactions into the specified income categories: 'Salary', 'Dividends', 'Investment Income', 'Other Income'.
+            3.  Sum up all outgoing transactions into the specified expenditure categories: 'Mortgage', 'Car Loan', 'Insurance Premiums', 'Credit Cards', 'Groceries', 'Utilities', 'Transport', 'Shopping', 'Dining Out'.
+            4.  If a transaction doesn't fit a specific category, classify it under 'Other Income' for incoming or create a reasonable new expenditure category.
+            5.  If a category has no transactions, its amount must be 0.
+            6.  Calculate the total for income, the total for expenses, and the net flow (total income - total expenses).
+            7.  Do not invent data. If you cannot determine a value from the text, use a reasonable default like "N/A" for strings or 0 for numbers.
 
             Here is the text to analyze:
             ---
