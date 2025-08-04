@@ -30,8 +30,8 @@ app.get('/api/history', async (req, res) => {
         const supabase = getSupabaseClient();
         const { data, error } = await supabase
             .from('analyses')
-            .select('id, created_at, file_name, analysis_data')
-            .order('created_at', { ascending: false }); // Fetch newest first
+            .select('id, created_at, file_name, analysis_data, account_name, balance') // Fetch balance
+            .order('created_at', { ascending: false }); 
 
         if (error) {
             throw new Error(`Database error: ${error.message}`);
@@ -76,8 +76,12 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
     console.log('--- AI ANALYSIS REQUEST RECEIVED ---');
 
     try {
+        const { accountName } = req.body; // Get account name from the form data
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded.' });
+        }
+        if (!accountName) {
+            return res.status(400).json({ error: 'Account name is required.' });
         }
 
         // --- Check for API Keys ---
@@ -102,26 +106,27 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
             Your task is to identify all financial transactions, categorize them, and provide a summary in a specific JSON format.
 
             Follow these rules:
-            1.  Identify the statement period. Find the start and end dates and format them as "YYYY-MM-DD".
-            2.  Sum up all incoming transactions into the specified income categories: 'Salary', 'Dividends', 'Investment Income', 'Other Income'.
-            3.  Sum up all outgoing transactions into the specified expenditure categories: 'Mortgage', 'Car Loan', 'Insurance Premiums', 'Credit Cards', 'Groceries', 'Utilities', 'Transport', 'Shopping', 'Dining Out'.
-            4.  If a transaction doesn't fit a specific category, classify it under 'Other Income' for incoming or create a reasonable new expenditure category.
-            5.  If a category has no transactions, its amount must be 0.
-            6.  Calculate the total for income, the total for expenses, and the net flow (total income - total expenses).
-            7.  Do not invent data. If you cannot determine a value from the text, use a reasonable default like "N/A" for strings or 0 for numbers.
-            8.  Return ONLY the JSON object, with no other text or markdown formatting.
+            1.  **CRITICAL RULE:** Transactions listed under columns titled "Withdrawals", "Debits", or "Payments" are EXPENSES. Transactions listed under "Deposits", "Credits", or "Receipts" are INCOME.
+            2.  Identify the statement period. Find the start and end dates and format them as "YYYY-MM-DD".
+            3.  **NEW RULE:** Specifically find the value for "Total Balance in SGD Equivalent", which is often on page 3, and extract it as a number for the 'balance' field.
+            4.  Sum up all incoming transactions into the specified income categories: 'Salary', 'Dividends', 'Investment Income', 'Other Income'.
+            5.  Sum up all outgoing transactions into the specified expenditure categories: 'Mortgage', 'Car Loan', 'Insurance Premiums', 'Credit Cards', 'Groceries', 'Utilities', 'Transport', 'Shopping', 'Dining Out'.
+            6.  If a transaction doesn't fit a specific category, classify it under 'Other Income' for incoming or create a reasonable new expenditure category.
+            7.  If a category has no transactions, its amount must be 0.
+            8.  Calculate the total for income, the total for expenses, and the net flow (total income - total expenses).
+            9.  Do not invent data. If you cannot determine a value from the text, use a reasonable default like "N/A" for strings or 0 for numbers.
+            10. Return ONLY the JSON object, with no other text or markdown formatting.
 
             Here is the text to analyze:
             ---
             ${pdfData.text.substring(0, 30000)} 
             ---
         `;
-
+        
         console.log('Sending data to AI for analysis...');
         const result = await model.generateContent(prompt);
         const response = result.response;
         
-        // --- Clean and Parse AI Response ---
         let responseText = response.text();
         console.log('Raw AI Response:', responseText); 
         
@@ -130,9 +135,8 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
 
         console.log('Successfully received and parsed analysis from AI.');
 
-        // --- Transform AI Response to Frontend Structure ---
-        console.log('Transforming AI response...');
         const transformCategories = (summaryObject, totalKey) => {
+            if (!summaryObject) return [];
             return Object.entries(summaryObject)
                 .filter(([key]) => key !== totalKey)
                 .map(([name, amount]) => ({ name, amount }));
@@ -141,23 +145,21 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
         const analysisResult = {
             income: {
                 total: aiResponse.income_summary?.['Total Income'] || 0,
-                categories: transformCategories(aiResponse.income_summary || {}, 'Total Income')
+                categories: transformCategories(aiResponse.income_summary, 'Total Income')
             },
             expenses: {
                 total: aiResponse.expense_summary?.['Total Expenses'] || 0,
-                categories: transformCategories(aiResponse.expense_summary || {}, 'Total Expenses')
+                categories: transformCategories(aiResponse.expense_summary, 'Total Expenses')
             },
             summary: {
                 netFlow: aiResponse.net_flow || 0,
                 startDate: aiResponse.statement_period?.start_date || 'N/A',
                 endDate: aiResponse.statement_period?.end_date || 'N/A',
-                account: aiResponse.account || 'N/A'
+                account: aiResponse.account || 'N/A',
+                balance: aiResponse.balance || 0 // Extract balance
             }
         };
 
-        console.log('AI response transformed successfully.');
-
-        // --- Validate Transformed Structure ---
         if (!analysisResult.income || !analysisResult.expenses || !analysisResult.summary) {
             console.error('Transformed data is still invalid:', JSON.stringify(analysisResult, null, 2));
             throw new Error('Failed to transform AI response into a valid format.');
@@ -170,7 +172,9 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
             .from('analyses')
             .insert([{
                 file_name: req.file.originalname,
-                analysis_data: analysisResult
+                analysis_data: analysisResult,
+                account_name: accountName,
+                balance: analysisResult.summary.balance // Save the balance
             }]);
 
         if (dbError) {
