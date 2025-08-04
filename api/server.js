@@ -109,6 +109,7 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
             5.  If a category has no transactions, its amount must be 0.
             6.  Calculate the total for income, the total for expenses, and the net flow (total income - total expenses).
             7.  Do not invent data. If you cannot determine a value from the text, use a reasonable default like "N/A" for strings or 0 for numbers.
+            8.  Return ONLY the JSON object, with no other text or markdown formatting.
 
             Here is the text to analyze:
             ---
@@ -116,78 +117,51 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
             ---
         `;
 
-        const generationConfig = {
-            response_mime_type: "application/json",
-            response_schema: {
-                type: "OBJECT",
-                properties: {
-                    income: {
-                        type: "OBJECT",
-                        properties: {
-                            total: { type: "NUMBER" },
-                            categories: {
-                                type: "ARRAY",
-                                items: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        name: { type: "STRING" },
-                                        amount: { type: "NUMBER" }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    expenses: {
-                        type: "OBJECT",
-                        properties: {
-                            total: { type: "NUMBER" },
-                            categories: {
-                                type: "ARRAY",
-                                items: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        name: { type: "STRING" },
-                                        amount: { type: "NUMBER" }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    summary: {
-                        type: "OBJECT",
-                        properties: {
-                            netFlow: { type: "NUMBER" },
-                            startDate: { type: "STRING" },
-                            endDate: { type: "STRING" },
-                            account: { type: "STRING" }
-                        }
-                    }
-                }
-            }
-        };
-
         console.log('Sending data to AI for analysis...');
-        const result = await model.generateContent(prompt, generationConfig);
+        const result = await model.generateContent(prompt);
         const response = result.response;
         
         // --- Clean and Parse AI Response ---
         let responseText = response.text();
-        console.log('Raw AI Response:', responseText); // Log the raw response for debugging
+        console.log('Raw AI Response:', responseText); 
         
-        // Remove markdown backticks and the 'json' language identifier
         responseText = responseText.replace(/```json/g, '').replace(/```/g, '');
-        const analysisResult = JSON.parse(responseText.trim());
+        const aiResponse = JSON.parse(responseText.trim());
 
         console.log('Successfully received and parsed analysis from AI.');
 
-        // --- Validate AI Response Structure ---
-        console.log('Validating AI response structure...');
-        if (!analysisResult || !analysisResult.income || !analysisResult.expenses || !analysisResult.summary) {
-            // Log the invalid object to see what the AI returned
-            console.error('Invalid AI response structure:', JSON.stringify(analysisResult, null, 2));
-            throw new Error('AI response is missing one or more key fields (income, expenses, summary).');
+        // --- Transform AI Response to Frontend Structure ---
+        console.log('Transforming AI response...');
+        const transformCategories = (summaryObject, totalKey) => {
+            return Object.entries(summaryObject)
+                .filter(([key]) => key !== totalKey)
+                .map(([name, amount]) => ({ name, amount }));
+        };
+
+        const analysisResult = {
+            income: {
+                total: aiResponse.income_summary?.['Total Income'] || 0,
+                categories: transformCategories(aiResponse.income_summary || {}, 'Total Income')
+            },
+            expenses: {
+                total: aiResponse.expense_summary?.['Total Expenses'] || 0,
+                categories: transformCategories(aiResponse.expense_summary || {}, 'Total Expenses')
+            },
+            summary: {
+                netFlow: aiResponse.net_flow || 0,
+                startDate: aiResponse.statement_period?.start_date || 'N/A',
+                endDate: aiResponse.statement_period?.end_date || 'N/A',
+                account: aiResponse.account || 'N/A'
+            }
+        };
+
+        console.log('AI response transformed successfully.');
+
+        // --- Validate Transformed Structure ---
+        if (!analysisResult.income || !analysisResult.expenses || !analysisResult.summary) {
+            console.error('Transformed data is still invalid:', JSON.stringify(analysisResult, null, 2));
+            throw new Error('Failed to transform AI response into a valid format.');
         }
-        console.log('AI response structure is valid.');
 
         // --- Save to Supabase Database ---
         console.log('Saving analysis to Supabase...');
