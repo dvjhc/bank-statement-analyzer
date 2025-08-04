@@ -77,17 +77,11 @@ const UploadArea = ({ onUpload, isLoading, error }) => (
             <>
                 <Upload className="w-12 h-12 text-gray-400 mb-4" />
                 <h2 className="text-xl font-semibold text-gray-700">Click to upload your bank statement</h2>
-                <p className="text-gray-500 mt-2">PDF format only. Your data remains local.</p>
+                <p className="text-gray-500 mt-2">PDF format only.</p>
                 <input type="file" id="file-upload" className="hidden" accept=".pdf" onChange={onUpload} disabled={isLoading} />
             </>
         )}
       </div>
-    </div>
-    <div className="mt-4 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-md flex">
-        <AlertCircle className="w-6 h-6 mr-3 flex-shrink-0"/>
-        <p className="text-sm text-left">
-            <strong>Local Processing:</strong> Your PDF will be processed on a local server on your machine. No data is sent to the internet. The AI categorization part is currently simulated.
-        </p>
     </div>
     {error && (
         <div className="mt-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md flex">
@@ -119,18 +113,19 @@ export default function App() {
     formData.append('statement', file);
 
     try {
-      // This fetch request goes to the local backend server or Vercel function
       const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
       });
 
-      if (!response.ok) {
-        // Throw an error with the status to be caught by the catch block
-        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-      }
-
+      // Try to parse the JSON body regardless of the response status
       const data = await response.json();
+      
+      if (!response.ok) {
+        // If the server sent a specific error message in the JSON, use it.
+        // Otherwise, fall back to the generic status text.
+        throw new Error(data.error || `Server responded with ${response.status}`);
+      }
       
       // Additional check to ensure data has the expected structure
       if (!data.income || !data.expenses || !data.summary) {
@@ -141,7 +136,8 @@ export default function App() {
 
     } catch (err) {
       console.error("Error uploading or analyzing file:", err);
-      setError('Could not connect to the server or process the file. Please ensure the server is running or check the deployment logs.');
+      // Display the specific error message from the backend if it exists
+      setError(err.message || 'Could not connect to the server or process the file.');
     } finally {
       setIsLoading(false);
     }
