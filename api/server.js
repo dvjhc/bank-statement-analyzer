@@ -178,6 +178,13 @@ app.post('/api/analyze', upload.single('statement'), async (req, res) => {
 
         console.log('Successfully received and parsed analysis from AI.');
 
+        // --- Validate AI Response Structure ---
+        console.log('Validating AI response structure...');
+        if (!analysisResult || !analysisResult.income || !analysisResult.expenses || !analysisResult.summary) {
+            throw new Error('AI response is missing one or more key fields (income, expenses, summary).');
+        }
+        console.log('AI response structure is valid.');
+
         // --- Save to Supabase Database ---
         console.log('Saving analysis to Supabase...');
         const supabase = getSupabaseClient();
