@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, BarChart2, ArrowUpCircle, ArrowDownCircle, FileText, AlertCircle, Loader2, TrendingUp, TrendingDown, Scale, Calendar } from 'lucide-react';
+import { Upload, ArrowUpCircle, ArrowDownCircle, AlertCircle, Loader2, TrendingUp, TrendingDown, Scale, Calendar } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- UI Components ---
@@ -9,7 +9,7 @@ const StatCard = ({ title, value, icon, colorClass, change }) => (
     <div className="flex justify-between items-start">
         <div>
             <p className="text-sm text-gray-500">{title}</p>
-            <p className="text-2xl font-bold text-gray-800">${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-2xl font-bold text-gray-800">{typeof value === 'number' ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : value}</p>
         </div>
         <div className={`p-3 rounded-full ${colorClass}`}>
             {icon}
